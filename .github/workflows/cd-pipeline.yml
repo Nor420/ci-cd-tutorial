@@ -8,7 +8,7 @@ on:
   workflow_dispatch: {}
 
 env:
-  PORT: 5001
+  PORT: 5000
   IMAGE: ${{ vars.IMAGE }}:${{ github.sha }}
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
-    name: Build, push, and deploy
+    name: Build, push, and deploy to Cloud Run
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,20 +50,20 @@ jobs:
       - name: Push image to Docker Hub
         run: docker push ${{ env.IMAGE }}
 
-      - name: Deploy to Cloud Run - Production
-        if: github.ref == 'refs/heads/main'
+      - name: Deploy to Cloud Run - Staging
+        if: github.ref == 'refs/heads/staging'
         run: |
-          gcloud run deploy ${{ vars.GCR_PROJECT_NAME }} \
+          gcloud run deploy ${{ vars.GCR_STAGING_PROJECT_NAME }} \
             --region ${{ vars.GCR_REGION }} \
             --image ${{ env.IMAGE }} \
             --platform managed \
             --allow-unauthenticated \
             --port ${{ env.PORT }}
 
-      - name: Deploy to Cloud Run - Staging
-        if: github.ref == 'refs/heads/staging'
+      - name: Deploy to Cloud Run - Production
+        if: github.ref == 'refs/heads/main'
         run: |
-          gcloud run deploy ${{ vars.GCR_STAGING_PROJECT_NAME }} \
+          gcloud run deploy ${{ vars.GCR_PROJECT_NAME }} \
             --region ${{ vars.GCR_REGION }} \
             --image ${{ env.IMAGE }} \
             --platform managed \
