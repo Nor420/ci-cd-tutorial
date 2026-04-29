@@ -1,12 +1,14 @@
-name: CD Pipeline to Coolify
+name: CD Pipeline to Google Cloud Run
 
 on:
   push:
     branches:
       - staging
+      - main
   workflow_dispatch: {}
 
 env:
+  PORT: 5001
   IMAGE: ${{ vars.IMAGE }}:${{ github.sha }}
 
 jobs:
@@ -26,27 +28,44 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
-    name: Build, push Docker image, and deploy to Coolify
+    name: Build, push, and deploy
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Authenticate for GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Authenticate for Docker Hub
-        env:
-          D_USER: ${{ secrets.DOCKER_USER }}
-          D_PASS: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "$D_PASS" | docker login -u "$D_USER" --password-stdin
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
 
       - name: Build and tag image
-        run: |
-          docker build -t ${{ env.IMAGE }} .
+        run: docker build -t ${{ env.IMAGE }} .
 
       - name: Push image to Docker Hub
-        run: |
-          docker push ${{ env.IMAGE }}
+        run: docker push ${{ env.IMAGE }}
 
-      - name: Deploy to Coolify
+      - name: Deploy to Cloud Run - Production
+        if: github.ref == 'refs/heads/main'
         run: |
-          curl --request GET "${{ secrets.COOLIFY_WEBHOOK }}" \
-          --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}"
+          gcloud run deploy ${{ vars.GCR_PROJECT_NAME }} \
+            --region ${{ vars.GCR_REGION }} \
+            --image ${{ env.IMAGE }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port ${{ env.PORT }}
+
+      - name: Deploy to Cloud Run - Staging
+        if: github.ref == 'refs/heads/staging'
+        run: |
+          gcloud run deploy ${{ vars.GCR_STAGING_PROJECT_NAME }} \
+            --region ${{ vars.GCR_REGION }} \
+            --image ${{ env.IMAGE }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port ${{ env.PORT }}
